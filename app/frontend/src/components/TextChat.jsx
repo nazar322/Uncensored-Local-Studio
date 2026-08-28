@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Bot, LoaderCircle, Send, Trash2, Square, History, Paperclip, X, ChevronDown, Globe2, Plus } from "lucide-react";
+import { Bot, LoaderCircle, Send, Trash2, Square, History, Paperclip, X, ChevronDown, Globe2, Plus, FileDown } from "lucide-react";
 import {
   getDownloadProgress,
   getLlmStatus,
@@ -8,6 +8,7 @@ import {
   startLlm,
   stopLlm,
 } from "../services/api";
+import { exportChatToPdf, getChatPdfTitle } from "../utils/exportChatToPdf";
 
 const processMessageContent = (rawText, apiReasoning = "", enableThinking = true) => {
   if (typeof rawText !== "string") {
@@ -134,6 +135,7 @@ function TextChat({
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [isBusy, setIsBusy] = useState(false);
+  const [isExportingPdf, setIsExportingPdf] = useState(false);
   const [useWebSearch, setUseWebSearch] = useState(false);
   const [webTimeFilter, setWebTimeFilter] = useState("any");
   const [loadingModel, setLoadingModel] = useState(null);
@@ -833,6 +835,29 @@ function TextChat({
     }
   };
 
+  const handleExportPdf = async () => {
+    if (!chatMessagesRef.current || messages.length === 0 || isBusy || isExportingPdf) return;
+
+    const conversation = conversations.find((item) => item.id === activeConversationId);
+    const title = getChatPdfTitle(conversation, messages);
+    setIsExportingPdf(true);
+    try {
+      await exportChatToPdf({
+        messagesElement: chatMessagesRef.current,
+        title,
+        modelName: conversation?.model || selectedModel || status.settings?.model || "",
+      });
+    } catch (err) {
+      showAlert({
+        title: "PDF Export Failed",
+        message: err.message || String(err),
+        danger: true,
+      });
+    } finally {
+      setIsExportingPdf(false);
+    }
+  };
+
   return (
     <div className="text-chat-layout" style={{ display: "flex", height: "100%", width: "100%", boxSizing: "border-box", overflow: "hidden" }}>
       <section className="text-chat-main" style={{ flex: 1, minWidth: 0, height: "100%", display: "flex", flexDirection: "column" }}>
@@ -937,6 +962,19 @@ function TextChat({
           </div>
 
           <div style={{ display: "flex", alignItems: "center", gap: "12px", flexShrink: 0 }}>
+            <button
+              className="m3-btn m3-btn-outlined chat-pdf-export-button"
+              onClick={handleExportPdf}
+              disabled={messages.length === 0 || isBusy || isExportingPdf}
+              title="Download this chat as a PDF"
+              aria-label="Download this chat as a PDF"
+            >
+              {isExportingPdf
+                ? <LoaderCircle size={14} className="progress-spinner" />
+                : <FileDown size={14} />}
+              <span>{isExportingPdf ? "Generating..." : "PDF"}</span>
+            </button>
+
             {/* Context gauge */}
             {(() => {
               const maxTokens = status.settings?.contextSize || 4096;

@@ -106,3 +106,31 @@ test("Windows launcher remains ASCII-safe for cmd.exe", () => {
   const launcher = fs.readFileSync(path.join(root, "windows.bat"));
   assert.equal([...launcher].some((byte) => byte > 0x7f), false);
 });
+
+test("chat PDF export derives useful titles and Windows-safe filenames", async () => {
+  const exportSource = read("app/frontend/src/utils/exportChatToPdf.js");
+  const appCss = read("app/frontend/src/App.css");
+  const moduleUrl = `${pathToFileURL(path.join(root, "app/frontend/src/utils/exportChatToPdf.js")).href}?regression-test`;
+  const { buildChatPdfFilename, getChatPdfTitle, normalizeHtml2CanvasColors } = await import(moduleUrl);
+
+  const title = getChatPdfTitle(
+    { title: "Chat Session" },
+    [{ role: "user", content: "Explain local inference" }],
+  );
+  assert.equal(title, "Explain local inference");
+  assert.equal(
+    buildChatPdfFilename("Model: Qwen / private?", new Date(2026, 7, 28)),
+    "Model Qwen private - 2026-08-28.pdf",
+  );
+  assert.equal(
+    normalizeHtml2CanvasColors("linear-gradient(color(srgb 0.5 0.25 1 / 0.2), color(srgb 0 0 0))"),
+    "linear-gradient(rgba(128, 64, 255, 0.2), rgba(0, 0, 0, 1))",
+  );
+  assert.doesNotMatch(
+    normalizeHtml2CanvasColors("oklab(0.585387 0.0253055 -0.202469 / 0.244176) 0 0 4px"),
+    /oklab/,
+  );
+  assert.match(exportSource, /function prepareClonedSurfaceForHtml2Canvas\(clonedDocument, clonedElement\)/);
+  assert.match(exportSource, /\.html2pdf__overlay, \.html2canvas-container/);
+  assert.match(appCss, /\.app-dialog-backdrop\s*\{[\s\S]*?z-index:\s*20000/);
+});
