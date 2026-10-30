@@ -65,12 +65,20 @@ fi
 
 cd "$RUNTIME_DIR"
 export PATH="$NODE_DIR/bin:$PATH"
-print_info "Installing kokoro-js into app/tts-runtime..."
+# Kokoro runs on CPU. Avoid ONNX Runtime's optional CUDA payload, which can
+# fail installation when nvcc reports a newer toolkit such as CUDA 13.
+export ONNXRUNTIME_NODE_INSTALL_CUDA=skip
+if [[ -f "$RUNTIME_DIR/package-lock.json" ]]; then
+  NPM_INSTALL_MODE="ci"
+else
+  NPM_INSTALL_MODE="install"
+fi
+print_info "Installing pinned kokoro-js dependencies into app/tts-runtime..."
 if supports_symlinks "$RUNTIME_DIR"; then
-  "$NPM_BIN" install --prefer-offline
+  "$NPM_BIN" "$NPM_INSTALL_MODE" --prefer-online --no-audit --no-fund
 else
   print_info "Filesystem does not support symlinks; installing without npm bin links..."
-  "$NPM_BIN" install --prefer-offline --no-bin-links
+  "$NPM_BIN" "$NPM_INSTALL_MODE" --prefer-online --no-audit --no-fund --no-bin-links
 fi
 
 print_ok "Kokoro TTS runtime is ready."

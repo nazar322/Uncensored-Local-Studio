@@ -1,32 +1,61 @@
-import React, { memo, useState, useRef, useEffect } from "react";
-import { Square, RefreshCw, Sun, Moon, Palette, Check, PanelLeftClose, PanelLeft } from "lucide-react";
+import React, { memo, useState, useRef, useEffect, useCallback } from "react";
+import { Sun, Moon, Palette, Check, PanelLeft, Power, Loader2 } from "lucide-react";
 import { THEMES } from "../themes";
+import { getBackendStatus, getLlmStatus, stopServer, stopLlm } from "../services/api";
 
-const truncateModelName = (name) => {
-  if (!name || typeof name !== "string") return "";
-  let cleanName = name;
-  if (name.includes("--")) {
-    const parts = name.split("--");
-    cleanName = parts[parts.length - 1];
-  }
-  if (cleanName.length > 25) {
-    return cleanName.substring(0, 22) + "...";
-  }
-  return cleanName;
-};
+// "models/Gemma-4-E4B-Q5_K_M.gguf" -> "Gemma-4-E4B-Q5_K_M"
+const cleanModelName = (name) => String(name || "").split(/[\\/]/).pop().replace(/\.(safetensors|gguf|ckpt|bin)$/i, "");
 
-function TopStatusBar({ 
-  telemetry, 
-  serverRunning, 
-  activeModel, 
-  isLlmLoaded = false, 
-  onStopServer, 
-  isStoppingServer = false, 
-  theme, 
+const RUNTIME_LABELS = { image: "Image", text: "Chat" };
+
+function TopStatusBar({
+  theme,
   setTheme,
   sidebarVisible,
-  onToggleSidebar
+  onToggleSidebar,
+  onImageUnloaded,
+  onTextUnloaded,
 }) {
+  // What the server actually has loaded, polled; the screens' own state only knows what was picked
+  const [loaded, setLoaded] = useState({ image: null, text: null });
+  const [unloading, setUnloading] = useState(null);
+
+  const refreshLoaded = useCallback(async () => {
+    const [image, text] = await Promise.all([
+      getBackendStatus().catch(() => null),
+      getLlmStatus().catch(() => null),
+    ]);
+    setLoaded({
+      image: image?.ready ? cleanModelName(image.settings?.model) || "Image model" : null,
+      text: text?.ready ? cleanModelName(text.settings?.model) || "Chat model" : null,
+    });
+  }, []);
+
+  useEffect(() => {
+    refreshLoaded();
+    const timer = setInterval(refreshLoaded, 3000);
+    return () => clearInterval(timer);
+  }, [refreshLoaded]);
+
+  const unload = async (kind) => {
+    setUnloading(kind);
+    try {
+      if (kind === "image") {
+        await stopServer();
+        onImageUnloaded?.();
+      } else {
+        await stopLlm();
+        onTextUnloaded?.();
+      }
+    } catch (err) {
+      console.error(`Failed to unload the ${kind} model:`, err);
+    } finally {
+      await refreshLoaded();
+      setUnloading(null);
+    }
+  };
+
+  const loadedKinds = ["image", "text"].filter((kind) => loaded[kind]);
   const [showThemeMenu, setShowThemeMenu] = useState(false);
   const menuRef = useRef(null);
 
@@ -40,62 +69,55 @@ function TopStatusBar({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const formatGb = (value, { allowZero = false } = {}) => {
-    const number = Number(value);
-    if (!Number.isFinite(number) || number < 0) return "--";
-    if (number === 0 && !allowZero) return "--";
-    return number.toFixed(number >= 10 ? 0 : 1);
-  };
-
-  const getStatusText = () => {
-    if (isLlmLoaded) return "Model Loaded (Text)";
-    if (activeModel) return "Model Loaded (Image)";
-    if (serverRunning) return "Server Active";
-    return "Local Mode";
-  };
-
-  const getStatusClass = () => {
-    if (activeModel || isLlmLoaded) return "status-indicator";
-    if (serverRunning) return "status-indicator busy";
-    return "status-indicator offline";
-  };
-
   const isDark = (theme || "dark").startsWith("dark");
 
   return (
     <div className="top-status-bar">
       <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-        <button
-          onClick={onToggleSidebar}
-          className="sidebar-toggle-btn"
-          title={sidebarVisible ? "Collapse Sidebar" : "Expand Sidebar"}
-        >
-          {sidebarVisible ? <PanelLeftClose size={18} /> : <PanelLeft size={18} />}
-        </button>
+        {!sidebarVisible && (
+          <button
+            type="button"
+            onClick={onToggleSidebar}
+            className="sidebar-toggle-btn"
+            aria-label="Open sidebar"
+            title="Open sidebar"
+          >
+            <PanelLeft size={18} />
+          </button>
+        )}
 
-        <div className="current-model-info">
-          <div className={getStatusClass()}></div>
-          <span style={{ fontWeight: 600, fontSize: "0.95rem" }}>
-            {getStatusText()}
-          </span>
-          {(activeModel || (typeof isLlmLoaded === "string" && isLlmLoaded)) && (
-            <>
-              <span style={{ color: "var(--md-sys-color-outline-variant)" }}>|</span>
-              <span 
-                style={{ color: "var(--md-sys-color-primary)", fontWeight: 700 }}
-                title={activeModel || isLlmLoaded}
+        {loadedKinds.length === 0 ? (
+          <div className="current-model-info status-pill">
+            <div className="status-indicator offline" />
+            <span>No model loaded</span>
+          </div>
+        ) : (
+          loadedKinds.map((kind) => (
+            <div key={kind} className="current-model-info status-pill status-pill-loaded">
+              <div className="status-indicator" />
+              <span>{RUNTIME_LABELS[kind]}</span>
+              <span className="status-pill-model" title={loaded[kind]}>{loaded[kind]}</span>
+              <button
+                type="button"
+                className="status-pill-unload"
+                onClick={() => unload(kind)}
+                disabled={unloading !== null}
+                aria-label={`Unload ${loaded[kind]}`}
+                title="Unload to free memory"
               >
-                {truncateModelName(activeModel || isLlmLoaded)}
-              </span>
-            </>
-          )}
-        </div>
+                {unloading === kind ? <Loader2 size={13} className="status-pill-spin" aria-hidden="true" /> : <Power size={13} aria-hidden="true" />}
+              </button>
+            </div>
+          ))
+        )}
       </div>
 
       <div className="telemetry-group" style={{ position: "relative" }}>
         <button
+          type="button"
           className="theme-toggle-btn"
           onClick={() => setTheme(isDark ? "light" : "dark")}
+          aria-label={`Switch to ${isDark ? "light" : "dark"} theme`}
           title={`Switch to ${isDark ? "light" : "dark"} theme`}
         >
           {isDark ? <Sun size={18} /> : <Moon size={18} />}
@@ -103,10 +125,12 @@ function TopStatusBar({
 
         <div ref={menuRef} style={{ position: "relative", display: "inline-block" }}>
           <button
+            type="button"
+            aria-label="Choose a color theme"
+            aria-expanded={showThemeMenu}
             className={`theme-toggle-btn ${showThemeMenu ? "active" : ""}`}
             onClick={() => setShowThemeMenu(!showThemeMenu)}
             title="Choose a custom color theme"
-            style={{ marginRight: "12px" }}
           >
             <Palette size={18} />
           </button>
@@ -141,35 +165,7 @@ function TopStatusBar({
           )}
         </div>
 
-        {serverRunning && (
-          <button
-            className="m3-btn m3-btn-error"
-            style={{ height: "34px", padding: "0 14px" }}
-            onClick={onStopServer}
-            disabled={isStoppingServer}
-            title="Stop local model server"
-          >
-            {isStoppingServer ? <RefreshCw className="progress-spinner" size={14} /> : <Square size={14} />}
-            <span>{isStoppingServer ? "Stopping" : "Stop Server"}</span>
-          </button>
-        )}
 
-        {/* CPU Telemetry Chip */}
-        <div className="telemetry-chip" title="CPU Utilization">
-          <span>CPU: {Number.isFinite(Number(telemetry.cpu_usage)) ? telemetry.cpu_usage : "--"}%</span>
-        </div>
-
-        {/* RAM Telemetry Chip */}
-        <div className="telemetry-chip" title="System Memory Usage">
-          <span>RAM: {formatGb(telemetry.ram_used_gb)} / {formatGb(telemetry.ram_total_gb)} GB</span>
-        </div>
-
-        {/* GPU VRAM Telemetry Chip */}
-        {telemetry.vram_total_gb > 0 && (
-          <div className="telemetry-chip" title={`${telemetry.gpu_name} VRAM`}>
-            <span>VRAM: {formatGb(telemetry.vram_used_gb, { allowZero: true })} / {formatGb(telemetry.vram_total_gb)} GB</span>
-          </div>
-        )}
       </div>
     </div>
   );

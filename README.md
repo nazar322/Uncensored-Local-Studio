@@ -1,4 +1,11 @@
-#  Uncensored AI Studio
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/branding/logo/mark-on-dark.svg" />
+    <img src="assets/branding/logo/mark.svg" alt="Portable AI Studio logo" width="120" height="120" />
+  </picture>
+</p>
+
+<h1 align="center">Portable AI Studio</h1>
 
 <p align="center">
   <strong>A premium, zero-configuration local AI studio and offline GUI for Stable Diffusion (Image Generation), LLMs (Chat), Whisper (Speech-to-Text), and Kokoro (Text-to-Speech). Powered by hardware-accelerated GPU and NPU execution on Windows, Linux, and macOS.</strong>
@@ -24,7 +31,7 @@
 
 
 ## 📖 Table of Contents
-* [What is Uncensored AI Studio?](#what-is-uncensored-ai-studio)
+* [What is Portable AI Studio?](#what-is-uncensored-ai-studio)
 * [Key Features](#key-features)
 * [Workspace & Engine Architecture](#workspace-architecture)
 * [Supported Models](#supported-models)
@@ -40,9 +47,9 @@
 
 ---
 
-## <a id="what-is-uncensored-ai-studio"></a>📖 What is Uncensored AI Studio?
+## <a id="what-is-uncensored-ai-studio"></a>📖 What is Portable AI Studio?
 
-**Uncensored AI Studio** is a completely offline, zero-setup, self-contained AI studio for Windows, Linux, and macOS. Unlike cloud-based AI systems, it runs entirely on your own hardware with no censorship, tracking, subscriptions, or login requirements.
+**Portable AI Studio** is a completely offline, zero-setup, self-contained AI studio for Windows, Linux, and macOS. Unlike cloud-based AI systems, it runs entirely on your own hardware with no censorship, tracking, subscriptions, or login requirements.
 
 It unifies four major local AI capabilities into one high-performance desktop interface:
 1. **🎨 Image Generation (Stable Diffusion):** Generate and edit high-quality images offline using `.safetensors`, `.gguf`, or `.ckpt` model weights.
@@ -94,8 +101,8 @@ Known-good image models available from the Model Manager:
 
 | Name | Filename | Type | Approx. size | Recommended use |
 | :--- | :--- | :--- | :--- | :--- |
-| Juggernaut XL v9 Lightning | `Juggernaut_RunDiffusionPhoto2_Lightning_4Steps.safetensors` | SDXL | 6.6 GB | High-quality photorealism on mid/high tier machines. |
-| DreamShaper XL Lightning | `DreamShaperXL_Lightning.safetensors` | SDXL | 6.6 GB | General SDXL images, fantasy, renders, and illustration. |
+| Juggernaut XL v9 Lightning | `Juggernaut_RunDiffusionPhoto2_Lightning_4Steps.safetensors` | SDXL | 7.1 GB | High-quality photorealism on mid/high tier machines. |
+| DreamShaper XL Lightning | `DreamShaperXL_Lightning.safetensors` | SDXL | 6.9 GB | General SDXL images, fantasy, renders, and illustration. |
 | DreamShaper 8 | `DreamShaper_8_pruned.safetensors` | SD 1.5 | 2.1 GB | Faster, lower-memory image generation. |
 | CyberRealistic V8 | `CyberRealistic_V8_FP16.safetensors` | SD 1.5 | 2.0 GB | Realistic SD 1.5 images and lower-memory systems. |
 | Rev Animated | `rev-animated-v1-2-2.safetensors` | SD 1.5 | 2.0 GB | Stylized/anime SD 1.5 images. |
@@ -117,7 +124,7 @@ Known-good image models available from the Model Manager:
 ## <a id="folder-architecture"></a>📁 Folder Architecture
 
 ```
-Uncensored-AI-Studio/
+Portable-AI-Studio/
 ├── windows.bat                # Windows Launcher (Double-click entrypoint)
 ├── linux.sh                   # Linux Launcher (Terminal entrypoint)
 ├── mac.sh                     # macOS Launcher (Terminal entrypoint)
@@ -233,6 +240,11 @@ Ensure you have a modern web browser installed. Follow the quick guide below for
 </details>
 
 <details>
+  <summary><strong> Opening the studio from another device on your network</strong></summary>
+  <p>The web interface only accepts connections from the computer it runs on, because it has no login. To reach it from another device on purpose, start it with <code>UAIS_HOST=0.0.0.0</code> (for example <code>UAIS_HOST=0.0.0.0 ./linux.sh</code>, or <code>set UAIS_HOST=0.0.0.0</code> before running <code>windows.bat</code>). Anyone on that network can then use it.</p>
+</details>
+
+<details>
   <summary><strong> Linux ROCm not loading for AMD Radeon GPUs</strong></summary>
   <p>Ensure your AMD GPU hardware and host kernel are fully compatible with ROCm 7.13. If ROCm fails to initialize correctly, the application will automatically fall back to Vulkan acceleration.</p>
 </details>
@@ -246,9 +258,15 @@ Ensure you have a modern web browser installed. Follow the quick guide below for
   <summary><strong> Windows exits with code <code>3221225781</code> (0xC0000135)</strong></summary>
   <p>This code means Windows could not locate a required backend DLL:</p>
   <ul>
-    <li><strong>For AMD/Intel Vulkan:</strong> Update your GPU driver to one with full Vulkan runtime support, then rerun the setup script to restore <code>app/backend/win/vulkan/</code>.</li>
+    <li><strong>For AMD/Intel Vulkan:</strong> Rerun <code>scripts/setup/setup.ps1</code>. Setup installs the required Microsoft Visual C++ x64 runtime and replaces stale Vulkan binaries with the compatible pinned build. Approve the Windows administrator prompt when it appears.</li>
     <li><strong>For NVIDIA CUDA:</strong> Install or update your NVIDIA graphics driver, then rerun the setup script to restore the CUDA runtime DLLs.</li>
   </ul>
+  <p>If setup cannot install the runtime, install Microsoft's official <a href="https://aka.ms/vc14/vc_redist.x64.exe">Visual C++ Redistributable for x64</a> manually, restart Windows, and rerun setup. A custom Vulkan build is not the first fix for this exit code.</p>
+</details>
+
+<details>
+  <summary><strong> Windows exits with code <code>3221225501</code> (0xC000001D)</strong></summary>
+  <p>This is an illegal CPU instruction from an older machine-specific Windows backend build; it is not evidence that the model or RTX GPU is unsupported. Rerun <code>scripts/setup/setup.ps1</code> to replace the CPU/CUDA binaries with runtime-dispatched builds and install the matching CUDA 12.8 runtime. The corrected CUDA package includes Blackwell targets for RTX 50-series GPUs.</p>
 </details>
 
 <details>
@@ -299,7 +317,7 @@ cmake .. -DSD_METAL=ON -DSD_BUILD_SHARED_LIBS=ON -DCMAKE_BUILD_TYPE=Release
 cmake --build . --config Release -j$(getconf _NPROCESSORS_ONLN 2>/dev/null || sysctl -n hw.ncpu)
 
 # 4. Copy the binaries into this project
-cp bin/sd* /path/to/Uncensored-AI-Studio/app/backend/linux/<backend>/
+cp bin/sd* /path/to/Portable-AI-Studio/app/backend/linux/<backend>/
 ```
 
 After copying, rename the server binary to match what `scripts/server/serve.cjs` expects:

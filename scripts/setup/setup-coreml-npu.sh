@@ -44,7 +44,7 @@ find_coreml_python() {
 }
 
 coreml_venv_ready() {
-  [[ -x "$PYTHON_BIN" ]] && "$PYTHON_BIN" -c "import sys; assert (3, 9) <= sys.version_info[:2] < (3, 12); import python_coreml_stable_diffusion, diffusers, transformers" >/dev/null 2>&1
+  [[ -x "$PYTHON_BIN" ]] && "$PYTHON_BIN" -c "import sys; assert (3, 9) <= sys.version_info[:2] < (3, 12); import torch, python_coreml_stable_diffusion, diffusers, transformers" >/dev/null 2>&1
 }
 
 echo ""
@@ -84,9 +84,9 @@ if [[ ! -x "$PYTHON_BIN" ]]; then
   fi
 fi
 
-echo "  Installing CoreML Stable Diffusion dependencies (numpy, coremltools, diffusers)..."
+echo "  Installing CoreML Stable Diffusion dependencies (PyTorch, numpy, coremltools, diffusers)..."
 "$PYTHON_BIN" -m pip install --upgrade pip
-"$PYTHON_BIN" -m pip install "numpy<1.24" coremltools diffusers transformers huggingface-hub pillow
+"$PYTHON_BIN" -m pip install torch "numpy<1.24" coremltools diffusers transformers huggingface-hub pillow
 
 echo "  Installing Apple's python-coreml-stable-diffusion package..."
 if ! "$PYTHON_BIN" -m pip install "git+https://github.com/apple/ml-stable-diffusion.git"; then
@@ -97,7 +97,7 @@ fi
 
 echo ""
 echo "  Verifying CoreML environment..."
-if ! "$PYTHON_BIN" -c "from python_coreml_stable_diffusion.pipeline import CoreMLStableDiffusionPipeline; print('  ANE (CoreML) Pipeline verified successfully!')"; then
+if ! "$PYTHON_BIN" -c "import torch; from python_coreml_stable_diffusion.pipeline import CoreMLStableDiffusionPipeline; print('  ANE (CoreML) Pipeline verified successfully!')"; then
   echo "  [ERROR] Verification failed. Please check the error details above."
   exit 1
 fi

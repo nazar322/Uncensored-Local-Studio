@@ -166,10 +166,10 @@ function createExportSurface({ messagesElement, title, modelName, exportedAt }) 
   header.appendChild(headingGroup);
   header.appendChild(metadata);
 
-  const messages = messagesElement.cloneNode(true);
-  messages.classList.add("chat-pdf-messages");
-  Array.from(messages.children).forEach((child) => {
-    if (!child.classList.contains("chat-message-row")) child.remove();
+  const messages = document.createElement("div");
+  messages.className = "chat-messages chat-pdf-messages";
+  messagesElement.querySelectorAll(".chat-message-row").forEach((message) => {
+    messages.appendChild(message.cloneNode(true));
   });
 
   surface.appendChild(header);

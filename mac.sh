@@ -91,6 +91,12 @@ if ln -s "node_modules_mac" "$TEST_LINK" 2>/dev/null; then
 else
   USE_SYMLINKS=false
 fi
+# macOS fakes symlinks on exFAT/FAT drives, and Linux and Windows see them as plain
+# files. Use the directory swap there too, so every OS agrees on what node_modules is.
+APP_DEVICE="$(stat -f %Sd "$APP_DIR" 2>/dev/null || true)"
+case "$(mount | awk -v d="/dev/$APP_DEVICE" '$1 == d { sub(/^[^(]*\(/, ""); sub(/,.*$/, ""); print; exit }')" in
+  exfat|msdos) USE_SYMLINKS=false ;;
+esac
 
 if [ "$USE_SYMLINKS" = true ]; then
   if [[ -d "$FRONTEND_NODE_MODULES" && ! -L "$FRONTEND_NODE_MODULES" ]]; then
@@ -194,6 +200,11 @@ if [[ -n "$SETUP_REASON" ]]; then
     exit 1
   fi
 fi
+
+# ── Keep the llama.cpp backend on the pinned release ──────────────────────
+# Existing installs never re-run setup, so update the text backend when it is older
+# than the release setup-llama.sh installs (backend fixes, new model support).
+bash "$SCRIPT_DIR/scripts/setup/update-llama.sh"
 
 # ── Launch ─────────────────────────────────────────────────────────────────
 clear 2>/dev/null || true
