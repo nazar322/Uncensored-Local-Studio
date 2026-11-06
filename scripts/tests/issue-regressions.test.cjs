@@ -64,6 +64,81 @@ test("text-to-image sends seed and sampling settings to sdapi", async () => {
   }
 });
 
+test("web search preserves percent encoding in DuckDuckGo destination URLs", async (t) => {
+  const { EventEmitter } = require("node:events");
+  const { Readable } = require("node:stream");
+  const { webSearch } = require("../search/providers");
+  const urls = [
+    "https://example.com/path%2Fsegment?q=a%26b&literal=%2520",
+    "https://example.com/discount?value=50%25",
+    "https://example.com/caf%C3%A9?q=%E4%B8%AD%E6%96%87",
+    "https://example.com/plain?q=hello+world",
+  ];
+  const html = urls.map((url, index) => {
+    const params = new URLSearchParams({ uddg: url, rut: "tracking" });
+    const href = `//duckduckgo.com/l/?${params}`.replaceAll("&", "&amp;");
+    return `<a class="result__a" href="${href}">Result ${index}</a>`;
+  }).join("\n");
+  t.mock.method(require("node:https"), "get", (_url, _options, callback) => {
+    const response = Readable.from([html]);
+    response.statusCode = 200;
+    callback(response);
+    return new EventEmitter();
+  });
+  const results = await webSearch("test query");
+  assert.deepEqual(results.map((result) => result.url), urls);
+});
+
+test("chat streams propagate backend and consumer errors", async (t) => {
+  const { streamChatWithLlm } = await import(pathToFileURL(path.join(root, "app/frontend/src/services/api.js")).href);
+  const delta = { choices: [{ delta: { content: "Partial answer" } }] };
+  for (const scenario of [
+    { name: "error before content", events: [{ error: { message: "Context size exceeded" } }], error: "Context size exceeded" },
+    { name: "error after partial content", events: [delta, { error: { message: "Backend ran out of memory" } }], error: "Backend ran out of memory" },
+    { name: "string error", events: [delta, { error: "Backend stopped" }], error: "Backend stopped" },
+    { name: "consumer error", events: [delta], error: "Rendering failed", onToken() { throw new Error("Rendering failed"); } },
+  ]) {
+    await t.test(scenario.name, async (t) => {
+      const body = new ReadableStream({
+        start(controller) {
+          const events = scenario.events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join("");
+          controller.enqueue(new TextEncoder().encode(events + "data: [DONE]\n\n"));
+          controller.close();
+        },
+      });
+      t.mock.method(global, "fetch", async () => new Response(body));
+      await assert.rejects(streamChatWithLlm([], {}, scenario.onToken || (() => {})), { message: scenario.error });
+      assert.equal(body.locked, false);
+    });
+  }
+});
+
+test("chat streams preserve fragmented content, reasoning, sources and metadata", async (t) => {
+  const { streamChatWithLlm } = await import(pathToFileURL(path.join(root, "app/frontend/src/services/api.js")).href);
+  const sources = [{ title: "Example", url: "https://example.com/" }];
+  const usage = { completion_tokens: 1 };
+  const timings = { predicted_ms: 10 };
+  const events = [
+    `event: web_sources\r\ndata: ${JSON.stringify({ sources })}\r\n\r\n`,
+    `data: ${JSON.stringify({ choices: [{ delta: { reasoning_content: "Thinking" } }] })}\n\n`,
+    `data: ${JSON.stringify({ choices: [{ delta: { content: "Caf\u00e9" }, finish_reason: "stop" }], usage, timings })}\n\n`,
+    "data: [DONE]\n\n",
+  ];
+  const bytes = new TextEncoder().encode(events.join(""));
+  const body = new ReadableStream({
+    start(controller) {
+      for (const byte of bytes) controller.enqueue(Uint8Array.of(byte));
+      controller.close();
+    },
+  });
+  t.mock.method(global, "fetch", async () => new Response(body));
+  const updates = [];
+  const result = await streamChatWithLlm([], {}, (...args) => updates.push(args));
+  assert.deepEqual(result, { content: "Caf\u00e9", reasoningContent: "Thinking", webSources: sources, usage, timings, finishReason: "stop" });
+  assert.equal(updates.length, 2);
+  assert.equal(body.locked, false);
+});
+
 test("slow image generation has no fixed proxy timeout and blocks destructive restarts", () => {
   const server = read("scripts/server/serve.cjs");
   assert.match(server, /function proxyImageBackendRequest[\s\S]*?timeout:\s*0/);
@@ -142,6 +217,14 @@ test("Kokoro setup uses pinned online dependencies and skips optional CUDA paylo
     assert.match(setup, /prefer-online/);
     assert.match(setup, /\bci\b/);
     assert.doesNotMatch(setup, /prefer-offline/);
+  }
+});
+
+test("issue 101: Kokoro setup declares build dependencies for sharp compilation", () => {
+  for (const relativePath of ["scripts/setup/setup-tts.ps1", "scripts/setup/setup-tts.sh"]) {
+    const setup = read(relativePath);
+    assert.match(setup, /node-addon-api/);
+    assert.match(setup, /node-gyp/);
   }
 });
 
